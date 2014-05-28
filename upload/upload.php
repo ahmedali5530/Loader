@@ -12,10 +12,14 @@ Class Upload extends Loader{
 
 	//allowed types
 	protected $types = array(
-		'jpg'  => 'image/jpeg',
-		'jpeg' => 'image/jpeg',
-		'png'  => 'image/png' ,
-		'gif'  => 'image/gif' ,
+		'1'  => 'image/jpeg',
+		'2'  => 'image/jpg',
+		'3'  => 'image/png' ,
+		'4'  => 'image/gif' ,
+		'5'  => 'gif' ,
+		'6'  => 'jpeg' ,
+		'7'  => 'jpg' ,
+		'8'  => 'png' ,
 	);
 	
 	//holds the type specified by user
