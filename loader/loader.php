@@ -144,6 +144,58 @@ Class Loader{
 		}
 		return $dirs;
 	}
+	
+	//messaging
+	/*
+	*usage of messaging api
+	*first set the message any where you want
+	*then get the message 
+	*then unset the message immedeatly if you do not want to show this again
+	*/
+	public function unset_message(){
+	
+		if(isset($_SESSION['message']))
+		{
+			unset($_SESSION['message']);
+		}
+	
+	}
+	
+	public function set_message($message_id){
+		
+		$_SESSION['message'] = $message_id;
+		
+	}
+	
+	public function get_message()
+	{
+	
+		if(isset($_SESSION['message']))
+		{
+		$message_id = $_SESSION['message'];
+		switch($message_id){
+			case(0);
+			case(3);
+			$alert = 'alert-danger';
+			break;
+			case(1);
+			case(2);
+			$alert = 'alert-success';
+			break;
+			default;
+			$alert = 'alert-info';
+			break;
+		}
+		
+		return'<div class="alert '.$alert.'">'.$this->messages[$message_id].'</div>';
+		
+		}
+		else
+		{
+			return null;
+		}
+		
+	}
 
 	public function __destruct()
 	{
