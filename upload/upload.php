@@ -50,11 +50,10 @@ Class Upload extends Loader{
 	//uploads the file
 	public function upload($file,$options=null)
 	{
-	
 		//validations.
 		//validations..
 		//validations...
-		//WTF! Validations :p
+		//:p
 		if(isset($_FILES[$file]['name']))
 		{
 			if(is_uploaded_file($_FILES[$file]['tmp_name']))
@@ -118,34 +117,33 @@ Class Upload extends Loader{
 				
 				if(count($this->message['file_upload'][$file]['error'])==0)
 				{
-					//upload file here
 					$tmp_name = $_FILES[$file]['tmp_name'];
 					
-					$path = $this->path;
+					$path = BASEPATH.$this->path;
 					
 					if(file_exists($path))
 					{
 						//do nothing
-						
 					}
 					else
 					{
+						//create the folder instead
 						mkdir($path);
 					}
 					
 					$name = $this->rand==true ? $this->random_name($_FILES[$file]['name']) : $_FILES[$file]['name'].strtolower(pathinfo($_FILES[$file]['name'], PATHINFO_EXTENSION));
 					
+					//upload file here
 					if(move_uploaded_file($tmp_name,$path.$name))
 					{
 						//returns the name, type, size, path, url in an array.
 						return array(
 						
-							'name'=>$name,
-							'type'=>$_FILES[$file]['type'],
-							'size'=>$_FILES[$file]['size'],
-							'path'=>$path,
-							'URL'=>$this->base_url().$path.$name
-						
+							'name'	=> $name,
+							'type'	=> $_FILES[$file]['type'],
+							'size'	=> $_FILES[$file]['size'],
+							'path'	=> $path,
+							'URL' 	=> base_url().$this->path.$name,
 						);
 						
 					}
@@ -175,27 +173,28 @@ Class Upload extends Loader{
 		{
 			if(!empty($this->message['file_upload'][$element]['error']))
 			{
-				echo '<ul>';
+				$error = '<ul>';
 
 				foreach($this->message['file_upload'][$element]['error'] as $error)
 				{
-					echo '<li>' . $error . '</li>';
+					$error .= '<li>' . $error . '</li>';
 				}
 				
-				echo '</ul>';
-				
+				$error .= '</ul>';
+				return $error;
 			}
 			else
 			{
-				echo '<ul>';
+				$error = '<ul>';
 				
-					echo '<li>';
+					$error .= '<li>';
 					
-					echo $this->message['file_upload'][$element]['error'];
+					$error .= $this->message['file_upload'][$element]['error'];
 					
-					echo '</li>';
+					$error .= '</li>';
 					
-				echo '</ul>';
+				$error .= '</ul>';
+				return $error;
 			}
 			
 		}
@@ -209,7 +208,7 @@ Class Upload extends Loader{
 	//generates a random name for uploaded file
 	public function random_name($file)
 	{
-		return $file.'_'.md5($file.'_'.substr(uniqid(),-4)).'_'.substr(uniqid(),-4).'.'.substr($file,1);
+		return md5($file.'_'.substr(uniqid(),-4)).'_'.substr(uniqid(),-4).'.'.strtolower(pathinfo($file, PATHINFO_EXTENSION));
 	}
 
 }
