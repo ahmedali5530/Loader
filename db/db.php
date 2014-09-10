@@ -6,53 +6,30 @@
 *-----> other DB utilities
 *-----@author------
 *------*ahmedali5530*------
+*------ version 2.0--------
 **/
 
 Class DB extends Loader{
 	
-	//holds the select fields of the table
-	protected $select ;
-
-	//holds the where fields of the table
-	protected $where ;
-
-	//holds the table name
-	protected $table ;
-
-	//holds the current query string
-	protected $query = '';
-	
-	//holds the current query result
-	protected $result = '';
-	
-	//limit
-	protected $limit;
-	
-	//offset
-	protected $offset;
-	
-	//order by Such as ASC or DESC
-	protected $order_by;
-	
-	//order by mode
-	protected $order_by_mode;
-	
-	//group by
-	protected $group_by;
-	
-	//holds the cycles for a multi_insert or multi_update query
-	protected $cycles ;
-
-	//holds the number of rows returned
-	public $num_rows = 0;
-
-	//holds the simple array result returned by database
-	public $get_array = array();
-
-	//holds the object result returned by database
-	public $get_object = array();
-	
-	var $security;
+	var $where = array();
+	var $select = array();
+	var $aggregate = array();
+	var $table = array();
+	var $joins = array();
+	var $like = array();
+	var $offset = false;
+	var	$limit = null;
+	var	$order_by = false;
+	var	$order_by_mode = false;
+	var	$group_by = false;
+	var	$having = false;
+	var	$cycles = false;
+	var $num_rows = '';
+	var $insert_id = '';
+	var $result = array();
+	var $get_array = array();
+	var $get_object = array();
+	var $query = '';
 	
 	/**
 	* Regular methods starts here-------------------------------------------------------------------------
@@ -62,7 +39,7 @@ Class DB extends Loader{
 	public function __construct($host=null,$user=null,$pw=null,$db=null)
 	{
 		if($host==null && $user==null && $pw==null && $db==null){
-			$this->con = new Mysqli(self::HOST,self::USER,self::PASSWORD,self::DB);
+			$this->con = new Mysqli(self::DB_HOST,self::DB_USER,self::DB_PASSWORD,self::DB_NAME);
 		}else{
 			$this->con = new Mysqli($host,$user,$pw,$db);
 		}
@@ -72,8 +49,6 @@ Class DB extends Loader{
 		$this->con->set_charset('utf8');
 		
 		self::$instance = $this;
-		$this->load('Libraries/security/Security');
-		$this->security = new Security();
 	}
 	
 	public static function get_instance()
@@ -82,16 +57,35 @@ Class DB extends Loader{
 	}
 	
 
-	//resets the variables
+	//resets the selection/write variables
 	public function reset()
 	{
-		unset($this->select);
-		unset($this->table);
-		unset($this->query);
-		unset($this->where);
-		unset($this->cycles);
-		unset($this->get_array);
-		unset($this->get_object);
+		$this->where = array();
+		$this->select = array();
+		$this->aggregate = array();
+		$this->table = array();
+		$this->joins = array();
+		$this->like = array();
+		$this->get_array = array();
+		$this->get_object = array();
+		$this->offset = false;
+		$this->limit = null;
+		$this->order_by = false;
+		$this->order_by_mode = false;
+		$this->group_by = false;
+		$this->having = false;
+	}
+	
+	//function can be DISTINCT, MIN, MAX, SUM, COUNT
+	public function select_aggregate($function='DISTINCT',$field='*',$alias=null)
+	{
+		$stmt = $function.'(`'.$this->check_alias($field).'`)';
+		if($alias !== null)
+		{
+			$stmt .= ' as `'.$alias.'`';
+		}
+		$this->aggregate[] = $stmt;
+		return $this;
 	}
 
 	//prepares the select fields
@@ -101,36 +95,139 @@ Class DB extends Loader{
 		{
 			foreach($fields as $field)
 			{
-				$this->select[] = $field;
+				$this->select[] = $this->check_alias($field);
 			}
 		}else
 		{
-			$this->select[] = $fields;
+			if(strpos($fields,','))
+			{
+				//it contains more than on select field
+				//explode the string and convert it to array
+				foreach(explode(',',$fields) as $field)
+				{
+					$this->select[] = $this->check_alias($field);
+				}
+			}else{
+				$this->select[] = $this->check_alias($fields);
+			}
 		}
 		return $this;
 	}
 
 	//prepares the where properties
-	public function where($properties , $values = null)
+	//supported types are AND and OR
+	//has support for conditional operators i.e. =,<,>,<=,>=,!=
+	//added support for comparisons between fields
+	public function where($properties , $values = null,$operator = '=',$type = 'AND',$val_quotes = "'")
 	{
 		if(is_array($properties))
 		{
-			foreach($properties as $keys=>$values)
+			foreach($properties as $key=>$val)
 			{
-				$this->where[$keys] = $this->security->clean($values);
+				if(isset($this->where) && count($this->where)>0)
+				{
+					$this->where[] = "".$type." `".$this->clean($this->check_alias($key))."`".$operator.$val_quotes.$this->clean($val).$val_quotes." ";
+				}
+				else
+				{
+					$this->where[] = "`".$this->clean($this->check_alias($key))."`".$operator.$val_quotes.$this->clean($val).$val_quotes." ";
+				}
 			}
 		}
 		else
 		{
-			$this->where[$properties] = $this->security->clean($values);
+			if(isset($this->where) && count($this->where)>0)
+			{
+				$this->where[] = "".$type." `".$this->clean($this->check_alias($properties))."`".$operator.$val_quotes.$this->clean($values).$val_quotes." ";
+			}
+			else
+			{
+				$this->where[] = "`".$this->clean($this->check_alias($properties))."`".$operator.$val_quotes.$this->clean($values).$val_quotes." ";
+			}
 		}
 		return $this;
+	}
+	
+	//make the query string for like operator
+	//supported position are before(%a), after(a%), both(%a%) and none(a)
+	public function like($properties , $values = null,$position='both',$type='AND')
+	{
+		$this->like = array();
+		if(is_array($properties))
+		{
+			foreach($properties as $key=>$val)
+			{
+				$this->like[] = $this->prepare_like_positions($key,$val,$position,$type);
+			}
+		}
+		else
+		{
+			$this->like[] = $this->prepare_like_positions($properties,$values,$position,$type);
+		}
+		return $this;
+	}
+	
+	private function prepare_like_positions($key,$val,$position='both',$type='AND')
+	{
+		if(isset($this->like) && count($this->like)>0)
+		{
+			if($position=='both')
+			{
+				return $type." `".$this->clean($this->check_alias($key))."` LIKE '%".$this->clean($val)."%' ";
+			}elseif($position=='before')
+			{
+				return $type." `".$this->clean($this->check_alias($key))."` LIKE '%".$this->clean($val)."' ";
+			}elseif($position=='after')
+			{
+				return $type." `".$this->clean($this->check_alias($key))."` LIKE '".$this->clean($val)."%' ";
+			}else
+			{
+				return $type." `".$this->clean($this->check_alias($key))."` LIKE '".$this->clean($val)."' ";
+			}
+		}
+		else
+		{
+			if($position=='both')
+			{
+				return "`".$this->clean($this->check_alias($key))."` LIKE '%".$this->clean($val)."%' ";
+			}elseif($position=='before')
+			{
+				return "`".$this->clean($this->check_alias($key))."` LIKE '%".$this->clean($val)."' ";
+			}elseif($position=='after')
+			{
+				return "`".$this->clean($this->check_alias($key))."` LIKE '".$this->clean($val)."%' ";
+			}else
+			{
+				return "`".$this->clean($this->check_alias($key))."` LIKE '".$this->clean($val)."' ";
+			}
+		}
 	}
 
 	//prepares the table name
 	public function table($table_name)
 	{
-		$this->table = $this->security->clean($table_name);
+		if(isset($this->table) && count($this->table)>0)
+		{
+			$this->table[] = ", `".$this->clean($this->check_alias(SELF::DB_PREFIX.$table_name))."`";
+		}
+		else
+		{
+			$this->table[] = "`".$this->clean($this->check_alias(SELF::DB_PREFIX.$table_name))."`";
+		}
+		return $this;
+	}
+	
+	//alias of table function
+	public function from($table_name)
+	{
+		if(isset($this->table) && count($this->table)>0)
+		{
+			$this->table[] = ", `".$this->clean($this->check_alias(SELF::DB_PREFIX.$table_name))."`";
+		}
+		else
+		{
+			$this->table[] = "`".$this->clean($this->check_alias(SELF::DB_PREFIX.$table_name))."`";
+		}
 		return $this;
 	}
 	
@@ -143,9 +240,9 @@ Class DB extends Loader{
 	}
 	
 	//sets the order by clause
-	public function order_by($order_by_field,$order_by_mode)
+	public function order_by($order_by_field,$order_by_mode='ASC')
 	{
-		$this->order_by = $order_by_field;
+		$this->order_by = $this->check_alias($order_by_field);
 		$this->order_by_mode = $order_by_mode;
 		return $this;
 	}
@@ -153,7 +250,25 @@ Class DB extends Loader{
 	//sets the group by class
 	public function group_by($field)
 	{
-		$this->group_by = $field;
+		$this->group_by = $this->check_alias($field);
+		return $this;
+	}
+	
+	//defines the join
+	//supported join types are
+	// left, right, inner,cross
+	//syntax
+	//join('t1 as ab','ab.school_id=t2.school_id','JOIN TYPE')
+	public function join($table_name,$condition,$join_type='INNER')
+	{
+		$this->joins[] = $join_type.' JOIN `'.$this->check_alias(SELF::DB_PREFIX.$table_name).'` ON `'.SELF::DB_PREFIX.str_replace('=','`=`'.SELF::DB_PREFIX.'',str_replace('.','`.`',$condition)).'` ';
+		return $this;
+	}
+	
+	//sets the having condition
+	public function having($having_condition)
+	{
+		$this->having = $having_condition;
 		return $this;
 	}
 	
@@ -165,59 +280,104 @@ Class DB extends Loader{
 	}
 
 	//prepares the get query all units included in this query
-	protected function get()
+	/*
+	-	orientation of select query
+	-	// Write the "select" portion of the query
+	-	// Write the "FROM" portion of the query
+	-	// Write the "JOIN" portion of the query
+	-	// Write the "WHERE" portion of the query
+	-	// Write the "LIKE" portion of the query
+	-	// Write the "GROUP BY" portion of the query
+	-	// Write the "HAVING" portion of the query
+	-	// Write the "ORDER BY" portion of the query
+	-	// Write the "LIMIT" portion of the query
+	*/
+	public function get()
 	{
 		$this->query = "SELECT";
 		
-		//check if select fields are present
-		if(isset($this->select))
+		//check for aggregate functions
+		if(!empty($this->aggregate))
 		{
-			$this->query .= " `" . implode("`,`",$this->select) . "` ";
+			$this->query .= ' '.implode(' ,',$this->aggregate);
+			$this->query .= ',';
+		}
+		//check if select fields are present
+		
+		if(!empty($this->select))
+		{
+			$this->query .= " `" . implode("`,`",$this->select) . "`\n";
 		}
 		else
-		{	
-			//otherwise standard * is used
-			$this->query .= " * ";	
+		{
+			$this->query = rtrim($this->query,",");
+			if(!empty($this->aggregate))
+			{
+				
+			}else{
+				//otherwise standard * is used
+				$this->query .= " * ";	
+			}
 		}
 
-		$this->query .= "FROM `" . $this->table . "`";
+		$this->query .= "FROM (" . implode('',$this->table) . ")\n";
 		
-		//check for where properties
-		if(isset($this->where))
+		//process joins section here
+		
+		if(!empty($this->joins))
 		{
-			$this->query .= " WHERE";
-			
-			foreach($this->where as $keys=>$values)
-			{
-				$this->query .= " `" . $this->security->clean($keys) ."` = '". $this->security->clean($values) . "' AND";
-			}
-			
-			//removes the extra 'and' from the end of query
-			$this->query = rtrim($this->query," AND");
-			
+			$this->query .= implode("\n",$this->joins);
 		}
 		
-		//removes the extra "," from the end if only OFFSET is applied
-		$this->query = rtrim($this->query,",");
+		//check for where properties
+		if(!empty($this->where))
+		{
+			$this->query .= " WHERE ";
+			
+			$this->query .= implode("\n",$this->where);
+		}
+		
+		//check for like properties
+		if(!empty($this->like) && !empty($this->where))
+		{
+			$this->query .= " AND ";
+			
+			$this->query .= implode("\n",$this->like);
+		}
+		elseif(!empty($this->like))
+		{
+			$this->query .= " WHERE ";
+			
+			$this->query .= implode("\n",$this->like);
+		}
 		
 		//check for group by
-		if($this->group_by)
+		if($this->group_by !== false)
 		{
-			$this->query .= " GROUP BY `" .$this->group_by . "`";
+			$this->query .= "GROUP BY `" .$this->group_by . "` \n";
+		}
+		
+		//check for group by
+		if($this->having !== false)
+		{
+			$this->query .= "HAVING " .$this->having . " \n";
 		}
 		
 		//check for order_by
-		if($this->order_by)
+		if($this->order_by !==false)
 		{
-			$this->query .= " ORDER BY `" .$this->order_by . "` " . $this->order_by_mode;
+			$this->query .= "ORDER BY `" .$this->order_by . "` " . $this->order_by_mode;
 		}
 		
 		//check for limits
-		if(isset($this->offset) && $this->offset!=="" || isset($this->limit))
+		if($this->offset !==false)
 		{
-			$this->query .= " LIMIT ".$this->offset.",".$this->limit;
+			$this->query .= " LIMIT ".$this->offset;
 		}
-		
+		if($this->limit !==null)
+		{
+			$this->query .= ",".$this->limit;
+		}
 		
 		//echo $this->query;
 		//transfers the result to the result property
@@ -229,12 +389,11 @@ Class DB extends Loader{
 		//some debugging
 		if($this->con->errno)
 		{
-			$this->debug();
+			return $this->debug();
 		}
+		//return the result set
 		
-		//resets all the values hold by current vars
 		$this->reset();
-		
 	}
 
 	//returns the num rows returned by the last select query.
@@ -259,12 +418,10 @@ Class DB extends Loader{
 	public function get_array()
 	{
 		$this->get();
-
-		$result = $this->result;
-		
+	
 		if($this->num_rows()>0)
 		{
-			while($fetch_array = $result->fetch_assoc())
+			while($fetch_array = $this->result->fetch_assoc())
 			{
 				$this->get_array[] = $fetch_array;
 			}
@@ -285,14 +442,11 @@ Class DB extends Loader{
 	//sends the returned data as object
 	public function get_object()
 	{
-		
 		$this->get();
-		
-		$result = $this->result;
-		
+
 		if($this->num_rows()>0)
 		{
-			while($fetch_object = $result->fetch_object())
+			while($fetch_object = $this->result->fetch_object())
 			{
 				$this->get_object[] = $fetch_object;
 			}
@@ -305,15 +459,118 @@ Class DB extends Loader{
 		//frees the memory
 		$this->result->free();
 		
-		//returns the result set as an object
 		return $this->get_object;
+	}
+	
+	//alias of get_row_object($offset)
+	public function get_row($offset=0)
+	{
+		return $this->get_row_object($offset);
+	}
+	
+	//gets the single row from database
+	public function get_row_array($offset = 0)
+	{
+		$this->get();
 		
+		$result = $this->result;
+		
+		if($this->num_rows()>0)
+		{
+			while($fetch_assoc = $result->fetch_assoc())
+			{
+				$this->get_array[] = $fetch_assoc;
+			}
+			
+			if(array_key_exists($offset,$this->get_array))
+			{
+				//frees the memory
+				$this->result->free();
+			
+				return $this->get_array[$offset];
+			}
+		}
+		else
+		{
+			$this->get_array = null;	
+		}
+		
+		
+		$offset = 0;
+		$this->result->free();
+	
+		return $this->get_array[$offset];
+	}
+	
+	//gets the single row from database
+	public function get_row_object($offset = 0)
+	{
+		$this->get();
+		
+		$result = $this->result;
+		
+		if($this->num_rows()>0)
+		{
+			while($fetch_object = $result->fetch_object())
+			{
+				$this->get_object[] = $fetch_object;
+			}
+			
+			if(array_key_exists($offset,$this->get_object))
+			{
+				//frees the memory
+				$this->result->free();
+				
+				return $this->get_object[$offset];
+			}
+		}
+		else
+		{
+			$this->get_object = null;	
+		}
+		
+		
+		$offset = 0;
+		$this->result->free();
+		
+		return $this->get_object[$offset];
+	}
+	
+	//counts the result
+	//alias of num_rows()
+	public function get_count()
+	{
+		$this->get();
+		
+		return $this->num_rows();
+	}
+	
+	//counts the result
+	//alias of num_rows()
+	public function count_all()
+	{
+		$this->get();
+		
+		return $this->num_rows();
+	}
+		
+	//checks either a value is unique of not
+	public function unique()
+	{
+		//$this->result;
+		if($this->get_array()==null)
+		{
+			return true;
+		}else
+		{
+			return false;
+		}
 	}
 
 	//inserts the record into the database
 	public function insert($data,$options=null)
 	{
-		if(isset($this->cycles))
+		if(isset($this->cycles) AND $this->cycles !==false)
 		{
 			return $this->multi_insert($data,$options);
 		}
@@ -326,12 +583,12 @@ Class DB extends Loader{
 	//simple insert is for inserting 1 row only in db
 	protected function single_insert($data)
 	{
-		$this->query = "INSERT INTO " . $this->table;
+		$this->query = "INSERT INTO " . implode('',$this->table) . " ";
 			
 		//do clean all values before insert
 		foreach($data as $keys=>$values)
 		{
-			$data[$keys] = $this->security->clean($values);
+			$data[$keys] = $this->clean($values);
 		}
 		
 		$keys = implode("`,`",array_keys($data));
@@ -339,19 +596,22 @@ Class DB extends Loader{
 		$values = implode("','",array_values($data));
 		
 		$this->query .= "(`" . $keys . "`) VALUES ('" . $values . "')";
-
+		
+		//echo $this->query;
 		$this->result = $this->con->query($this->query);
 		
 		//debug
 		if($this->con->errno)
 		{
-			$this->debug();
+			return $this->debug();
 		}
+		
+		//resets the all values holded by current variables
+		$this->reset();
 		
 		if($this->affected_rows()>0)
 		{
-			//resets the all values holded by current variables
-			$this->reset();
+			
 			return true;
 		}
 		else
@@ -377,7 +637,7 @@ Class DB extends Loader{
 		$multiples = isset($options['multi']) ? str_replace("|",",",$options['multi']) : null;
 		
 		//starts the query
-		$this->query = "INSERT INTO `" . $this->table ."` (";
+		$this->query = "INSERT INTO " . implode('',$this->table) ." (";
 		
 		//enters the table fields for query
 		$this->query .= ltrim(''.$singles . "," . $multiples . ") VALUES ",",");
@@ -399,7 +659,7 @@ Class DB extends Loader{
 			{
 				foreach($single as $key=>$val)
 				{
-					$this->query .= "'" . $this->security->clean($data[$val]) . "',";
+					$this->query .= "'" . $this->clean($data[$val]) . "',";
 				}
 			}
 			else
@@ -410,7 +670,7 @@ Class DB extends Loader{
 			//writes the multi values
 			foreach($multi as $key=>$val)
 			{
-				$this->query .= "'". $this->security->clean($data[$val][$i])."',";
+				$this->query .= "'". $this->clean($data[$val][$i])."',";
 			}
 			
 			$this->query .= "),";
@@ -428,14 +688,16 @@ Class DB extends Loader{
 		//debug
 		if($this->con->errno)
 		{
-			$this->debug();
+			return $this->debug();
 		}
 		
+		//resets the all values holded by current variables
+		$this->reset();
+			
 		//checks if affected rows present then return true else return false
 		if($this->affected_rows()>0)
 		{
-			//resets the all values holded by current variables
-			$this->reset();
+			
 			return true;
 		}
 		else
@@ -448,7 +710,7 @@ Class DB extends Loader{
 	//updates the record
 	public function update($data,$options=null)
 	{
-		if(isset($this->cycles))
+		if(isset($this->cycles) AND $this->cycles !==false)
 		{
 			return $this->multi_update($data,$options);
 		}
@@ -461,36 +723,39 @@ Class DB extends Loader{
 	//updates the single record from db
 	protected function single_update($data)
 	{
-		$this->query = "UPDATE " . $this->table . " SET ";
+		$this->query = "UPDATE " . implode('',$this->table) . " SET ";
 		
 		//do clean all values before insert
 		foreach($data as $keys=>$values)
 		{
-			$this->query .= "`" . $keys . "` = '" . $this->security->clean($values) . "' , ";
+			$this->query .= "`" . $keys . "` = '" . $this->clean($values) . "' , ";
 		}
 		$this->query = rtrim($this->query," , ");
 		
-		$this->query .= " WHERE";
-		
-		foreach($this->where as $keys=>$values)
+		//check for where properties
+		if(!empty($this->where))
 		{
-			$this->query .= " `" . $this->security->clean($keys) ."` = '". $this->security->clean($values) . "' AND";	
+			$this->query .= " WHERE ";
+			
+			$this->query .= implode(' ',$this->where);
 		}
 		
-		$this->query = rtrim($this->query," AND");
+		//echo $this->query;
 		
 		$this->result = $this->con->query($this->query);
 		
 		//debug
 		if($this->con->errno)
 		{
-			$this->debug();
+			return $this->debug();
 		}
+		
+		//resets the all values Holden by current variables
+		$this->reset();
 		
 		if($this->affected_rows()>0)
 		{
-			//resets the all values Holden by current variables
-			$this->reset();
+			
 			return true;
 		}
 		else
@@ -499,7 +764,7 @@ Class DB extends Loader{
 		}
 	}
 	
-	//update multiple records from database currently in progress
+	//update multiple records from database
 	protected function multi_update($data,$options)
 	{
 		/**********update for singles************/
@@ -512,12 +777,12 @@ Class DB extends Loader{
 			$single_feilds = explode("|",$options['single']);
 			$num_single_feilds = count($single_feilds);
 			
-			$this->query .= "UPDATE " . $this->table . " SET ";
+			$this->query .= "UPDATE " . implode('',$this->table) . " SET ";
 			
 			//do clean all values before insert
 			for($i=0;$i<=$num_single_feilds-1;$i++)
 			{
-				$this->query .= "`" . $single_feilds[$i] . "` = '" . $this->security->clean($data[$single_feilds[$i]]) . "' , ";	
+				$this->query .= "`" . $single_feilds[$i] . "` = '" . $this->clean($data[$single_feilds[$i]]) . "' , ";	
 			}
 			
 			$this->query = rtrim($this->query," , ");
@@ -526,7 +791,7 @@ Class DB extends Loader{
 			
 			foreach($options['single_id'] as $keys=>$values)
 			{
-				$this->query .= " `" . $this->security->clean($keys) ."` = '". $this->security->clean($values) . "' AND";
+				$this->query .= " `" . $this->clean($keys) ."` = '". $this->clean($values) . "' AND";
 			}
 				
 			$this->query = rtrim($this->query," AND");
@@ -536,11 +801,11 @@ Class DB extends Loader{
 		
 		/**********update for singles end************/
 		
-		/**********update for multiples************/
+		/**********update for multiples**************/
 		
 		foreach($data[$options['multi_id']] as $key=>$id)
 		{
-			$ids[] = $this->security->clean($id);
+			$ids[] = $this->clean($id);
 		}
 		
 		$ids = array_values($ids);
@@ -548,18 +813,17 @@ Class DB extends Loader{
 		$ids = implode(',',$ids);
 		/**
 		*make separate query of singles and separate query for every multi 
-		*
 		**/
 		$multi_feilds = explode("|",$options['multi']);
 		$num_multi_feilds = count($multi_feilds);
 		
 		for($i=0;$i<=$num_multi_feilds-1;$i++)
 		{
-			$this->query .= "UPDATE `".$this->table."` SET `".$multi_feilds[$i]."` = CASE `".$options['multi_id']."` ";
+			$this->query .= "UPDATE ".implode('',$this->table)." SET `".$multi_feilds[$i]."` = CASE `".$options['multi_id']."` ";
 			
 			for ($a=0;$a<=$this->cycles-1;$a++)
 			{
-				$this->query .= "WHEN '".$this->security->clean($data[$options['multi_id']][$a])."' THEN '".$this->security->clean($data[$multi_feilds[$i]][$a])."' ";
+				$this->query .= "WHEN '".$this->clean($data[$options['multi_id']][$a])."' THEN '".$this->clean($data[$multi_feilds[$i]][$a])."' ";
 			}
 			$this->query .= "END WHERE `".$options['multi_id']."` IN (".$ids.");";
 		}
@@ -570,13 +834,14 @@ Class DB extends Loader{
 		//debug
 		if($this->con->errno)
 		{
-			$this->debug();
+			return $this->debug();
 		}
+		
+		//resets the all values Holden by current variables
+		$this->reset();
 
 		if($this->affected_rows()>0)
-		{
-			//resets the all values Holden by current variables
-			$this->reset();
+		{	
 			return true;
 		}else{
 			return false;
@@ -586,27 +851,59 @@ Class DB extends Loader{
 	//deletes the records or empties the table
 	public function delete()
 	{
-		if(isset($this->where))
+		if(!empty($this->where))
 		{
-			$this->query = "DELETE FROM " . $this->table . " WHERE ";
+			$this->query = "DELETE FROM " . implode('',$this->table) . " WHERE ";
 			
-			foreach($this->where as $keys=>$values)
-			{
-				$this->query .= " `" . $this->security->clean($keys) ."` = '". $this->security->clean($values) . "' AND";
-				$this->query = rtrim($this->query," AND");
-			}
+			//check for where properties
+			
+			$this->query .= implode(' ',$this->where);
 		}
 		else
 		{
-			$this->query = "TRUNCATE TABLE " . $this->table;
+			$this->query = "DELETE FROM " . implode('',$this->table);
 		}
 		
+		//check for like properties
+		if(!empty($this->like) && !empty($this->where))
+		{
+			$this->query .= " AND ";
+			
+			$this->query .= implode(' ',$this->like);
+		}
+		elseif(!empty($this->like))
+		{
+			$this->query .= " WHERE ";
+			
+			$this->query .= implode(' ',$this->like);
+		}
+		
+		//check for order_by
+		if($this->order_by !==false)
+		{
+			$this->query .= "ORDER BY `" .$this->order_by . "` " . $this->order_by_mode;
+		}
+		
+		//check for limits
+		if($this->offset !==false)
+		{
+			$this->query .= " LIMIT ".$this->offset;
+		}
+
+		//return $this->query;
 		$this->result = $this->con->query($this->query);
 		
-		if($this->affected_rows()>0)
+		//debug
+		if($this->con->errno)
 		{
-			//resets the all values Holden by current variables
-			$this->reset();
+			return $this->debug();
+		}
+		
+		//resets the all values Holden by current variables
+		$this->reset();
+			
+		if($this->affected_rows()>0)
+		{	
 			return true;
 		}
 		else
@@ -615,6 +912,32 @@ Class DB extends Loader{
 		}
 	}
 	
+	//deletes the records or empties the table
+	public function truncate()
+	{
+		$this->query = "TRUNCATE " . implode('',$this->table);
+			
+		$this->result = $this->con->query($this->query);
+		
+		//debug
+		if($this->con->errno)
+		{
+			return $this->debug();
+		}
+		
+		//resets the all values Holden by current variables
+		$this->reset();
+		
+		if($this->affected_rows()>0)
+		{	
+			return true;
+		}
+		else
+		{
+			return false;
+		}
+	}
+
 	//removes the extra commas from query
 	private function remove_commas($query)
 	{
@@ -633,24 +956,51 @@ Class DB extends Loader{
 		return substr($first.$q,0,-1);
 	}
 	
+	//check whether there is a dot in the fields or not
+	//dot(.) relates to table.field 
+	private function check_alias($key)
+	{
+		if(strpos($key,'.'))
+		{
+			$key = str_replace('.','`.`',SELF::DB_PREFIX.$key);
+		}
+		
+		if(strpos($key,'as'))
+		{
+			$key = str_replace(' as ','` as `',$key);
+		}
+		
+		return $key;
+	}
+	
+	//do the mysqli_real_escape_string
+	public function clean($data)
+	{
+		$data = filter_var($data, FILTER_SANITIZE_STRING);
+		return $this->con->real_escape_string(trim($data));
+	}
+	
 	//debug
 	private function debug()
 	{
-		echo '<pre>';
-		echo "<div class=\"\" style=\"border:1px solid #cccccc;margin:5px;color:#f00;font-family:corbel;padding:5px;\">";
-		
-			echo "<div style=\"background:#f00;color:#fff;clear:both;padding:5px;\">";
-				echo "<span style=\"font-size:20px;font-weight:bold;\">Error</span>";
+		if(ENVIRONMENT == 'development'){
+			echo '<pre>';
+			echo "<div class=\"\" style=\"border:1px solid #cccccc;margin:5px;color:#f00;font-family:corbel;padding:5px;\">";
+			
+				echo "<div style=\"background:#f00;color:#fff;clear:both;padding:5px;\">";
+					echo "<span style=\"font-size:20px;font-weight:bold;\">Error</span>";
+				echo "</div>";
+				
+				echo "<span>You have an error in your SQL near </span>\n";
+				
+				echo "<strong style=\"color:#000;\">".$this->query."</strong>\n";
+				
+				echo "<span>".$this->con->error."</span>";
 			echo "</div>";
-			
-			echo "<span>You have an error in your SQL near </span>\n";
-			
-			echo "<strong style=\"color:#000;\">".$this->query."</strong>\n";
-			
-			echo "<span>".$this->con->error."</span>";
-		echo "</div>";
-		echo '</pre>';
-		exit();
+			echo '</pre>';
+		}else{
+			echo 'A System Error Occured';
+		}
 	}
 	
 	//magic __destruct()
