@@ -21,7 +21,7 @@ Class DB extends Loader{
 	var	$limit = null;
 	var	$order_by = false;
 	var	$order_by_mode = false;
-	var	$group_by = false;
+	var	$group_by = array();
 	var	$having = false;
 	var	$cycles = false;
 	var $num_rows = '';
@@ -30,6 +30,7 @@ Class DB extends Loader{
 	var $get_array = array();
 	var $get_object = array();
 	var $query = '';
+	var $raw = false;
 	
 	/**
 	* Regular methods starts here-------------------------------------------------------------------------
@@ -72,8 +73,10 @@ Class DB extends Loader{
 		$this->limit = null;
 		$this->order_by = false;
 		$this->order_by_mode = false;
-		$this->group_by = false;
+		$this->group_by = array();
 		$this->having = false;
+		$this->cycles = false;
+		$this->raw = false;
 	}
 	
 	//function can be DISTINCT, MIN, MAX, SUM, COUNT
@@ -148,57 +151,101 @@ Class DB extends Loader{
 		return $this;
 	}
 	
+	//adds the where IN operator
+	public function where_in($field, $values)
+	{
+		if(is_array($values))
+		{
+			//make array in to string
+			$values = implode("','",$values);
+			
+			if(isset($this->where) && count($this->where)>0)
+			{
+				$this->where[] = " AND `" . $this->clean($this->check_alias($field)) ."` IN('".$values."')";
+			}
+			else
+			{
+				$this->where[] = " `" . $this->clean($this->check_alias($field)) ."` IN('".$values."')";
+			}
+		}
+		else
+		{
+			if(isset($this->where) && count($this->where)>0)
+			{
+				$this->where[] = " AND `" . $this->clean($this->check_alias($field)) ."` IN('".$values."')";
+			}
+			else
+			{
+				$this->where[] = " `" . $this->clean($this->check_alias($field)) ."` IN('".$values."')";
+			}
+		}
+	}
+	
+	//made the support for BETWEEN comparisons
+	public function between($field,$first_val,$second_val,$type="AND")
+	{
+		if(isset($this->where) && count($this->where)>0)
+		{
+			$this->where[] = "".$type." `".$this->clean($this->check_alias($field))."` BETWEEN '".$this->clean($first_val)."' AND '".$this->clean($second_val)."' ";
+		}
+		else
+		{
+			$this->where[] = " `".$this->clean($this->check_alias($field))."` BETWEEN '".$this->clean($first_val)."' AND '".$this->clean($second_val)."' ";
+		}
+		return $this;
+	}
+	
 	//make the query string for like operator
 	//supported position are before(%a), after(a%), both(%a%) and none(a)
-	public function like($properties , $values = null,$position='both',$type='AND')
+	public function like($properties , $values = null,$position='both',$type='AND',$not = '')
 	{
 		$this->like = array();
 		if(is_array($properties))
 		{
 			foreach($properties as $key=>$val)
 			{
-				$this->like[] = $this->prepare_like_positions($key,$val,$position,$type);
+				$this->like[] = $this->prepare_like_positions($key,$val,$position,$type,$not);
 			}
 		}
 		else
 		{
-			$this->like[] = $this->prepare_like_positions($properties,$values,$position,$type);
+			$this->like[] = $this->prepare_like_positions($properties,$values,$position,$type,$not);
 		}
 		return $this;
 	}
 	
-	private function prepare_like_positions($key,$val,$position='both',$type='AND')
+	private function prepare_like_positions($key,$val,$position='both',$type='AND',$not)
 	{
 		if(isset($this->like) && count($this->like)>0)
 		{
 			if($position=='both')
 			{
-				return $type." `".$this->clean($this->check_alias($key))."` LIKE '%".$this->clean($val)."%' ";
+				return $type." `".$this->clean($this->check_alias($key))."` ".$not." LIKE '%".$this->clean($val)."%' ";
 			}elseif($position=='before')
 			{
-				return $type." `".$this->clean($this->check_alias($key))."` LIKE '%".$this->clean($val)."' ";
+				return $type." `".$this->clean($this->check_alias($key))."` ".$not." LIKE '%".$this->clean($val)."' ";
 			}elseif($position=='after')
 			{
-				return $type." `".$this->clean($this->check_alias($key))."` LIKE '".$this->clean($val)."%' ";
+				return $type." `".$this->clean($this->check_alias($key))."` ".$not." LIKE '".$this->clean($val)."%' ";
 			}else
 			{
-				return $type." `".$this->clean($this->check_alias($key))."` LIKE '".$this->clean($val)."' ";
+				return $type." `".$this->clean($this->check_alias($key))."` ".$not." LIKE '".$this->clean($val)."' ";
 			}
 		}
 		else
 		{
 			if($position=='both')
 			{
-				return "`".$this->clean($this->check_alias($key))."` LIKE '%".$this->clean($val)."%' ";
+				return "`".$this->clean($this->check_alias($key))."` ".$not." LIKE '%".$this->clean($val)."%' ";
 			}elseif($position=='before')
 			{
-				return "`".$this->clean($this->check_alias($key))."` LIKE '%".$this->clean($val)."' ";
+				return "`".$this->clean($this->check_alias($key))."` ".$not." LIKE '%".$this->clean($val)."' ";
 			}elseif($position=='after')
 			{
-				return "`".$this->clean($this->check_alias($key))."` LIKE '".$this->clean($val)."%' ";
+				return "`".$this->clean($this->check_alias($key))."` ".$not." LIKE '".$this->clean($val)."%' ";
 			}else
 			{
-				return "`".$this->clean($this->check_alias($key))."` LIKE '".$this->clean($val)."' ";
+				return "`".$this->clean($this->check_alias($key))."` ".$not." LIKE '".$this->clean($val)."' ";
 			}
 		}
 	}
@@ -208,11 +255,11 @@ Class DB extends Loader{
 	{
 		if(isset($this->table) && count($this->table)>0)
 		{
-			$this->table[] = ", `".$this->clean($this->check_alias(SELF::DB_PREFIX.$table_name))."`";
+			$this->table[] = ", `".$this->clean($this->check_alias(parent::DB_PREFIX.$table_name))."`";
 		}
 		else
 		{
-			$this->table[] = "`".$this->clean($this->check_alias(SELF::DB_PREFIX.$table_name))."`";
+			$this->table[] = "`".$this->clean($this->check_alias(parent::DB_PREFIX.$table_name))."`";
 		}
 		return $this;
 	}
@@ -222,11 +269,11 @@ Class DB extends Loader{
 	{
 		if(isset($this->table) && count($this->table)>0)
 		{
-			$this->table[] = ", `".$this->clean($this->check_alias(SELF::DB_PREFIX.$table_name))."`";
+			$this->table[] = ", `".$this->clean($this->check_alias(parent::DB_PREFIX.$table_name))."`";
 		}
 		else
 		{
-			$this->table[] = "`".$this->clean($this->check_alias(SELF::DB_PREFIX.$table_name))."`";
+			$this->table[] = "`".$this->clean($this->check_alias(parent::DB_PREFIX.$table_name))."`";
 		}
 		return $this;
 	}
@@ -250,7 +297,7 @@ Class DB extends Loader{
 	//sets the group by class
 	public function group_by($field)
 	{
-		$this->group_by = $this->check_alias($field);
+		$this->group_by[] = '`'.$this->check_alias($field).'` ';
 		return $this;
 	}
 	
@@ -261,7 +308,7 @@ Class DB extends Loader{
 	//join('t1 as ab','ab.school_id=t2.school_id','JOIN TYPE')
 	public function join($table_name,$condition,$join_type='INNER')
 	{
-		$this->joins[] = $join_type.' JOIN `'.$this->check_alias(SELF::DB_PREFIX.$table_name).'` ON `'.SELF::DB_PREFIX.str_replace('=','`=`'.SELF::DB_PREFIX.'',str_replace('.','`.`',$condition)).'` ';
+		$this->joins[] = $join_type.' JOIN `'.$this->check_alias(parent::DB_PREFIX.$table_name).'` ON `'.parent::DB_PREFIX.str_replace('=','`=`'.parent::DB_PREFIX.'',str_replace('.','`.`',$condition)).'` ';
 		return $this;
 	}
 	
@@ -276,6 +323,16 @@ Class DB extends Loader{
 	public function cycles($cycles=0)
 	{
 		$this->cycles = $cycles;
+		return $this;
+	}
+	
+	//added support for raw query
+	public function query($query)
+	{
+		$this->query = $this->clean($query);
+		
+		$this->raw = true;
+				
 		return $this;
 	}
 
@@ -293,92 +350,97 @@ Class DB extends Loader{
 	-	// Write the "LIMIT" portion of the query
 	*/
 	public function get()
-	{
-		$this->query = "SELECT";
-		
-		//check for aggregate functions
-		if(!empty($this->aggregate))
+	{	
+		if($this->raw == false)
 		{
-			$this->query .= ' '.implode(' ,',$this->aggregate);
-			$this->query .= ',';
-		}
-		//check if select fields are present
-		
-		if(!empty($this->select))
-		{
-			$this->query .= " `" . implode("`,`",$this->select) . "`\n";
-		}
-		else
-		{
-			$this->query = rtrim($this->query,",");
+			$this->query = "SELECT";
+			
+			//check for aggregate functions
 			if(!empty($this->aggregate))
 			{
+				$this->query .= ' '.implode(' ,',$this->aggregate);
+				$this->query .= ',';
+			}
+			//check if select fields are present
+			
+			if(!empty($this->select))
+			{
+				$this->query .= " `" . implode("`,`",$this->select) . "`\n";
+			}
+			else
+			{
+				$this->query = rtrim($this->query,",");
+				if(!empty($this->aggregate))
+				{
+					
+				}else{
+					//otherwise standard * is used
+					$this->query .= " * ";	
+				}
+			}
+
+			$this->query .= "FROM (" . implode('',$this->table) . ")\n";
+			
+			//process joins section here
+			
+			if(!empty($this->joins))
+			{
+				$this->query .= implode("\n",$this->joins);
+			}
+			
+			//check for where properties
+			if(!empty($this->where))
+			{
+				$this->query .= " WHERE ";
 				
-			}else{
-				//otherwise standard * is used
-				$this->query .= " * ";	
+				$this->query .= implode("\n",$this->where);
+			}
+			
+			//check for like properties
+			if(!empty($this->like) && !empty($this->where))
+			{
+				$this->query .= " AND ";
+				
+				$this->query .= implode("\n",$this->like);
+			}
+			elseif(!empty($this->like))
+			{
+				$this->query .= " WHERE ";
+				
+				$this->query .= implode("\n",$this->like);
+			}
+			
+			//check for group by
+			if(!empty($this->group_by))
+			{
+				$this->query .= "GROUP BY ";
+				
+				$this->query .= implode(",",$this->group_by);
+			}
+			
+			//check for group by
+			if($this->having !== false)
+			{
+				$this->query .= "HAVING " .$this->having . " \n";
+			}
+			
+			//check for order_by
+			if($this->order_by !==false)
+			{
+				$this->query .= "ORDER BY `" .$this->order_by . "` " . $this->order_by_mode;
+			}
+			
+			//check for limits
+			if($this->offset !==false)
+			{
+				$this->query .= " LIMIT ".$this->offset;
+			}
+			if($this->limit !==null)
+			{
+				$this->query .= ",".$this->limit;
 			}
 		}
-
-		$this->query .= "FROM (" . implode('',$this->table) . ")\n";
-		
-		//process joins section here
-		
-		if(!empty($this->joins))
-		{
-			$this->query .= implode("\n",$this->joins);
-		}
-		
-		//check for where properties
-		if(!empty($this->where))
-		{
-			$this->query .= " WHERE ";
-			
-			$this->query .= implode("\n",$this->where);
-		}
-		
-		//check for like properties
-		if(!empty($this->like) && !empty($this->where))
-		{
-			$this->query .= " AND ";
-			
-			$this->query .= implode("\n",$this->like);
-		}
-		elseif(!empty($this->like))
-		{
-			$this->query .= " WHERE ";
-			
-			$this->query .= implode("\n",$this->like);
-		}
-		
-		//check for group by
-		if($this->group_by !== false)
-		{
-			$this->query .= "GROUP BY `" .$this->group_by . "` \n";
-		}
-		
-		//check for group by
-		if($this->having !== false)
-		{
-			$this->query .= "HAVING " .$this->having . " \n";
-		}
-		
-		//check for order_by
-		if($this->order_by !==false)
-		{
-			$this->query .= "ORDER BY `" .$this->order_by . "` " . $this->order_by_mode;
-		}
-		
-		//check for limits
-		if($this->offset !==false)
-		{
-			$this->query .= " LIMIT ".$this->offset;
-		}
-		if($this->limit !==null)
-		{
-			$this->query .= ",".$this->limit;
-		}
-		
+		//main query has been overwritten
 		//echo $this->query;
 		//transfers the result to the result property
 		$this->result = $this->con->query($this->query);
@@ -394,6 +456,8 @@ Class DB extends Loader{
 		//return the result set
 		
 		$this->reset();
+		
+		return $this->result;
 	}
 
 	//returns the num rows returned by the last select query.
@@ -583,20 +647,23 @@ Class DB extends Loader{
 	//simple insert is for inserting 1 row only in db
 	protected function single_insert($data)
 	{
-		$this->query = "INSERT INTO " . implode('',$this->table) . " ";
-			
-		//do clean all values before insert
-		foreach($data as $keys=>$values)
+		if($this->raw == false)
 		{
-			$data[$keys] = $this->clean($values);
+			$this->query = "INSERT INTO " . implode('',$this->table) . " ";
+				
+			//do clean all values before insert
+			foreach($data as $keys=>$values)
+			{
+				$data[$keys] = $this->clean($values);
+			}
+			
+			$keys = implode("`,`",array_keys($data));
+			
+			$values = implode("','",array_values($data));
+			
+			$this->query .= "(`" . $keys . "`) VALUES ('" . $values . "')";
+		
 		}
-		
-		$keys = implode("`,`",array_keys($data));
-		
-		$values = implode("','",array_values($data));
-		
-		$this->query .= "(`" . $keys . "`) VALUES ('" . $values . "')";
-		
 		//echo $this->query;
 		$this->result = $this->con->query($this->query);
 		
@@ -623,65 +690,68 @@ Class DB extends Loader{
 	//inserts the multi records into the database according to the arrays given in the insert data
 	protected function multi_insert($data,$options = array())
 	{
-		//checks if single is present or not
-		if(isset($options['single']))
+		if($this->raw == false)
 		{
-			$singles = str_replace("|",",",$options['single']);
-		}
-		else
-		{
-			$singles = null;
-		}
-		
-		//a simple check if multi is present or not
-		$multiples = isset($options['multi']) ? str_replace("|",",",$options['multi']) : null;
-		
-		//starts the query
-		$this->query = "INSERT INTO " . implode('',$this->table) ." (";
-		
-		//enters the table fields for query
-		$this->query .= ltrim(''.$singles . "," . $multiples . ") VALUES ",",");
-		
-		//initialize the multi and single value's arrays
-		$multi = array();
-		$single = array();
-		
-		$multi = explode(",",$multiples);
-		$single = explode(",",$singles);
-		
-		//prepares the rest of the query 
-		for($i=0;$i<=$this->cycles-1;$i++)
-		{
-			$this->query .= "(";
-			
-			//write the single values
-			if($singles==!null)
+			//checks if single is present or not
+			if(isset($options['single']))
 			{
-				foreach($single as $key=>$val)
-				{
-					$this->query .= "'" . $this->clean($data[$val]) . "',";
-				}
+				$singles = str_replace("|",",",$options['single']);
 			}
 			else
 			{
-				$this->query .= "";
+				$singles = null;
 			}
 			
-			//writes the multi values
-			foreach($multi as $key=>$val)
+			//a simple check if multi is present or not
+			$multiples = isset($options['multi']) ? str_replace("|",",",$options['multi']) : null;
+			
+			//starts the query
+			$this->query = "INSERT INTO " . implode('',$this->table) ." (";
+			
+			//enters the table fields for query
+			$this->query .= ltrim(''.$singles . "," . $multiples . ") VALUES ",",");
+			
+			//initialize the multi and single value's arrays
+			$multi = array();
+			$single = array();
+			
+			$multi = explode(",",$multiples);
+			$single = explode(",",$singles);
+			
+			//prepares the rest of the query 
+			for($i=0;$i<=$this->cycles-1;$i++)
 			{
-				$this->query .= "'". $this->clean($data[$val][$i])."',";
+				$this->query .= "(";
+				
+				//write the single values
+				if($singles==!null)
+				{
+					foreach($single as $key=>$val)
+					{
+						$this->query .= "'" . $this->clean($data[$val]) . "',";
+					}
+				}
+				else
+				{
+					$this->query .= "";
+				}
+				
+				//writes the multi values
+				foreach($multi as $key=>$val)
+				{
+					$this->query .= "'". $this->clean($data[$val][$i])."',";
+				}
+				
+				$this->query .= "),";
 			}
 			
-			$this->query .= "),";
+			//remove extra comma from the end of the query
+			$this->query = rtrim($this->query,",");
+			
+			//removes the extra commas from the values brackets
+			$this->query = $this->remove_commas($this->query);
+			
 		}
-		
-		//remove extra comma from the end of the query
-		$this->query = rtrim($this->query,",");
-		
-		//removes the extra commas from the values brackets
-		$this->query = $this->remove_commas($this->query);
-		
 		//finally performs the mysqli_query;
 		$this->result = $this->con->query($this->query);
 		
@@ -723,23 +793,27 @@ Class DB extends Loader{
 	//updates the single record from db
 	protected function single_update($data)
 	{
-		$this->query = "UPDATE " . implode('',$this->table) . " SET ";
-		
-		//do clean all values before insert
-		foreach($data as $keys=>$values)
+		if($this->raw == false)
 		{
-			$this->query .= "`" . $keys . "` = '" . $this->clean($values) . "' , ";
-		}
-		$this->query = rtrim($this->query," , ");
 		
-		//check for where properties
-		if(!empty($this->where))
-		{
-			$this->query .= " WHERE ";
+			$this->query = "UPDATE " . implode('',$this->table) . " SET ";
 			
-			$this->query .= implode(' ',$this->where);
-		}
+			//do clean all values before insert
+			foreach($data as $keys=>$values)
+			{
+				$this->query .= "`" . $keys . "` = '" . $this->clean($values) . "' , ";
+			}
+			$this->query = rtrim($this->query," , ");
+			
+			//check for where properties
+			if(!empty($this->where))
+			{
+				$this->query .= " WHERE ";
+				
+				$this->query .= implode(' ',$this->where);
+			}
 		
+		}
 		//echo $this->query;
 		
 		$this->result = $this->con->query($this->query);
@@ -767,65 +841,70 @@ Class DB extends Loader{
 	//update multiple records from database
 	protected function multi_update($data,$options)
 	{
-		/**********update for singles************/
-		if($options['single']==null)
+		if($this->raw == false)
 		{
-			//do nothing
-		}
-		else
-		{
-			$single_feilds = explode("|",$options['single']);
-			$num_single_feilds = count($single_feilds);
-			
-			$this->query .= "UPDATE " . implode('',$this->table) . " SET ";
-			
-			//do clean all values before insert
-			for($i=0;$i<=$num_single_feilds-1;$i++)
+		
+			/**********update for singles************/
+			if($options['single']==null)
 			{
-				$this->query .= "`" . $single_feilds[$i] . "` = '" . $this->clean($data[$single_feilds[$i]]) . "' , ";	
+				//do nothing
 			}
-			
-			$this->query = rtrim($this->query," , ");
-			
-			$this->query .= " WHERE";
-			
-			foreach($options['single_id'] as $keys=>$values)
+			else
 			{
-				$this->query .= " `" . $this->clean($keys) ."` = '". $this->clean($values) . "' AND";
-			}
+				$single_feilds = explode("|",$options['single']);
+				$num_single_feilds = count($single_feilds);
 				
-			$this->query = rtrim($this->query," AND");
-			
-			$this->query .= ";";
-		}
-		
-		/**********update for singles end************/
-		
-		/**********update for multiples**************/
-		
-		foreach($data[$options['multi_id']] as $key=>$id)
-		{
-			$ids[] = $this->clean($id);
-		}
-		
-		$ids = array_values($ids);
-		
-		$ids = implode(',',$ids);
-		/**
-		*make separate query of singles and separate query for every multi 
-		**/
-		$multi_feilds = explode("|",$options['multi']);
-		$num_multi_feilds = count($multi_feilds);
-		
-		for($i=0;$i<=$num_multi_feilds-1;$i++)
-		{
-			$this->query .= "UPDATE ".implode('',$this->table)." SET `".$multi_feilds[$i]."` = CASE `".$options['multi_id']."` ";
-			
-			for ($a=0;$a<=$this->cycles-1;$a++)
-			{
-				$this->query .= "WHEN '".$this->clean($data[$options['multi_id']][$a])."' THEN '".$this->clean($data[$multi_feilds[$i]][$a])."' ";
+				$this->query .= "UPDATE " . implode('',$this->table) . " SET ";
+				
+				//do clean all values before insert
+				for($i=0;$i<=$num_single_feilds-1;$i++)
+				{
+					$this->query .= "`" . $single_feilds[$i] . "` = '" . $this->clean($data[$single_feilds[$i]]) . "' , ";	
+				}
+				
+				$this->query = rtrim($this->query," , ");
+				
+				$this->query .= " WHERE";
+				
+				foreach($options['single_id'] as $keys=>$values)
+				{
+					$this->query .= " `" . $this->clean($keys) ."` = '". $this->clean($values) . "' AND";
+				}
+					
+				$this->query = rtrim($this->query," AND");
+				
+				$this->query .= ";";
 			}
-			$this->query .= "END WHERE `".$options['multi_id']."` IN (".$ids.");";
+			
+			/**********update for singles end************/
+			
+			/**********update for multiples**************/
+			
+			foreach($data[$options['multi_id']] as $key=>$id)
+			{
+				$ids[] = $this->clean($id);
+			}
+			
+			$ids = array_values($ids);
+			
+			$ids = implode(',',$ids);
+			/**
+			*make separate query of singles and separate query for every multi 
+			**/
+			$multi_feilds = explode("|",$options['multi']);
+			$num_multi_feilds = count($multi_feilds);
+			
+			for($i=0;$i<=$num_multi_feilds-1;$i++)
+			{
+				$this->query .= "UPDATE ".implode('',$this->table)." SET `".$multi_feilds[$i]."` = CASE `".$options['multi_id']."` ";
+				
+				for ($a=0;$a<=$this->cycles-1;$a++)
+				{
+					$this->query .= "WHEN '".$this->clean($data[$options['multi_id']][$a])."' THEN '".$this->clean($data[$multi_feilds[$i]][$a])."' ";
+				}
+				$this->query .= "END WHERE `".$options['multi_id']."` IN (".$ids.");";
+			}
+		
 		}
 		
 		//performs the final query and transfers the results to the result property
@@ -851,43 +930,48 @@ Class DB extends Loader{
 	//deletes the records or empties the table
 	public function delete()
 	{
-		if(!empty($this->where))
+		if($this->raw == false)
 		{
-			$this->query = "DELETE FROM " . implode('',$this->table) . " WHERE ";
-			
-			//check for where properties
-			
-			$this->query .= implode(' ',$this->where);
-		}
-		else
-		{
-			$this->query = "DELETE FROM " . implode('',$this->table);
-		}
 		
-		//check for like properties
-		if(!empty($this->like) && !empty($this->where))
-		{
-			$this->query .= " AND ";
+			if(!empty($this->where))
+			{
+				$this->query = "DELETE FROM " . implode('',$this->table) . " WHERE ";
+				
+				//check for where properties
+				
+				$this->query .= implode(' ',$this->where);
+			}
+			else
+			{
+				$this->query = "DELETE FROM " . implode('',$this->table);
+			}
 			
-			$this->query .= implode(' ',$this->like);
-		}
-		elseif(!empty($this->like))
-		{
-			$this->query .= " WHERE ";
+			//check for like properties
+			if(!empty($this->like) && !empty($this->where))
+			{
+				$this->query .= " AND ";
+				
+				$this->query .= implode(' ',$this->like);
+			}
+			elseif(!empty($this->like))
+			{
+				$this->query .= " WHERE ";
+				
+				$this->query .= implode(' ',$this->like);
+			}
 			
-			$this->query .= implode(' ',$this->like);
-		}
+			//check for order_by
+			if($this->order_by !==false)
+			{
+				$this->query .= "ORDER BY `" .$this->order_by . "` " . $this->order_by_mode;
+			}
+			
+			//check for limits
+			if($this->offset !==false)
+			{
+				$this->query .= " LIMIT ".$this->offset;
+			}
 		
-		//check for order_by
-		if($this->order_by !==false)
-		{
-			$this->query .= "ORDER BY `" .$this->order_by . "` " . $this->order_by_mode;
-		}
-		
-		//check for limits
-		if($this->offset !==false)
-		{
-			$this->query .= " LIMIT ".$this->offset;
 		}
 
 		//return $this->query;
@@ -962,7 +1046,7 @@ Class DB extends Loader{
 	{
 		if(strpos($key,'.'))
 		{
-			$key = str_replace('.','`.`',SELF::DB_PREFIX.$key);
+			$key = str_replace('.','`.`',parent::DB_PREFIX.$key);
 		}
 		
 		if(strpos($key,'as'))
