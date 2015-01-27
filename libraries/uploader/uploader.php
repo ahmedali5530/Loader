@@ -20,12 +20,14 @@ Class Uploader extends Loader{
 		'6'  => 'jpeg' ,
 		'7'  => 'jpg' ,
 		'8'  => 'png' ,
+		'9'  => 'bmp' ,
+		'10'  => 'image/bmp' ,
 	);
 	
 	//holds the type specified by user
 	public $type;
 	
-	//checks if user selected random name option
+	//random name for uploaded file
 	public $rand = false;
 	
 	//holds the size of uploading size
@@ -46,7 +48,7 @@ Class Uploader extends Loader{
 	{
 		return self::$instance;
 	}
-	
+
 	//uploads the file
 	public function upload($file,$options=null)
 	{
@@ -77,7 +79,7 @@ Class Uploader extends Loader{
 					$this->path = $options['path'];	
 				}
 				
-				if(is_array($options) && isset($options['random_name']))
+				if(is_array($options) && isset($options['random_name']) && $options['random_name'] == true)
 				{	
 					$this->rand = true;
 				}
@@ -92,7 +94,6 @@ Class Uploader extends Loader{
 					{
 						$this->message['file_upload'][$file]['error'][] = $_FILES[$file]['type'] . ' .This file type is not allowed.';
 					}
-					
 				}
 				else
 				{
@@ -143,7 +144,7 @@ Class Uploader extends Loader{
 							'type'	=> $_FILES[$file]['type'],
 							'size'	=> $_FILES[$file]['size'],
 							'path'	=> $path,
-							'URL' 	=> base_url().$this->path.$name,
+							'URL' 	=> $path.$name,
 						);
 						
 					}
@@ -183,20 +184,6 @@ Class Uploader extends Loader{
 				$error .= '</ul>';
 				return $error;
 			}
-			else
-			{
-				$error = '<ul>';
-				
-					$error .= '<li>';
-					
-					$error .= $this->message['file_upload'][$element]['error'];
-					
-					$error .= '</li>';
-					
-				$error .= '</ul>';
-				return $error;
-			}
-			
 		}
 		else
 		{
