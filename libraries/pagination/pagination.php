@@ -1,423 +1,408 @@
 <?php
 
-    /**
-     * Pagination
-     * 
-     * Supplies an API for setting pagination details, and renders the resulting
-     * pagination markup (html) through the included render.inc.php file.
-     * 
-     * @note    The SEO methods (canonical/rel) were written following Google's
-     *          suggested patterns. Namely, the canoical url excludes any 
-     *          peripheral parameters that don't relate to the pagination
-     *          series. Whereas the prev/next rel link tags include any params
-     *          found in the request.
-     * @author  Oliver Nassar <onassar@gmail.com>
-     * @todo    add setter parameter type and range checks w/ exceptions
-     * @example
-     * <code>
-     *     // source inclusion
-     *     require_once APP . '/vendors/PHP-Pagination/Pagination.class.php';
-     *     
-     *     // determine page (based on <_GET>)
-     *     $page = isset($_GET['page']) ? ((int) $_GET['page']) : 1;
-     *     
-     *     // instantiate with page and records as constructor parameters
-     *     $pagination = (new Pagination($page, 200));
-     *     $markup = $pagination->parse();
-     * </code>
-     * @example
-     * <code>
-     *     // source inclusion
-     *     require_once APP . '/vendors/PHP-Pagination/Pagination.class.php';
-     *     
-     *     // determine page (based on <_GET>)
-     *     $page = isset($_GET['page']) ? ((int) $_GET['page']) : 1;
-     *     
-     *     // instantiate; set current page; set number of records
-     *     $pagination = (new Pagination());
-     *     $pagination->setCurrent($page);
-     *     $pagination->setTotal(200);
-     *     
-     *     // grab rendered/parsed pagination markup
-     *     $markup = $pagination->parse();
-     * </code>
-     */
-    class Pagination extends Loader
-    {
-        /**
-         * _variables
-         * 
-         * Sets default variables for the rendering of the pagination markup.
-         * 
-         * @var    array
-         * @access protected
+class Pagination
+{
+   
+	/*
+	 * Commentary in Brazilian Portuguese
+	 * -----------------------------------------
+	 * valor padrão para a página atual
+	 *
+	 * protected - somente poderá ser acessado dentro da própria classe em que foram declarados e a 
+	 * partir de classes descendentes, mas não poderão ser acessados a partir do programa que faz uso dessa classe 
+	 *
+	 * static -  atributos dinâmicos como as propriedades de um objeto, mas estão relacionados à classe, são compartilhadas
+	 * entre todos os objetos de uma mesma classe
+	 *
+	 * @ var int
+	 */
+         protected $_page = 1;
+	 
+	 /*
+	  * Commentary in Brazilian Portuguese
+	  * -----------------------------------------
+	  * valor padrão para o total de registros por página
+	  *
+	  * @ var int
+	  */
+	 protected $_recordsPage = 10;
+	 
+	 /*
+	  * Commentary in Brazilian Portuguese
+	  * -----------------------------------------
+	  * valor padrão para o retorno do início para cláusulas de banco de dados
+	  * essa classe trabalha com arrays e inteiros, o valor retornado em questão serve apenas para organização
+	  * e prevenção de erros, ou seja dentro de um método é feita a conta do início para cláusulas sql, evitando
+	  * que os resultados da sua paginação não sejam iguais aos resultados retornados pelo banco.
+	  * A paginação e o banco trabalharão com o mesmo valor inicial evitando erros.
+	  * Você consegue montar a paginação sem ele, esse valor é apenas de retorno
+	  *
+	  * @ var int
+	  */
+	 protected $_start = 0;
+	 
+	 /*
+	  * Commentary in Brazilian Portuguese
+	  * -----------------------------------------
+	  * total de registros retornados pelo banco ou array de resultados
+	  *
+	  * @ var int
+	  */
+	 protected $_totalRecords = null;
+	 
+	 /*
+	  * Commentary in Brazilian Portuguese
+	  * -----------------------------------------
+	  * valor padrão para os compomentes próximos e anteriores
+	  * valor opcional você pode fazer a paginação sem ele
+	  *
+	  * @ var int
+	  */
+	 protected $_nextPreviousValue = 15;
+	 
+	 /*
+	  * Commentary in Brazilian Portuguese
+	  * -----------------------------------------
+	  * retorna um array com os tipos de paginadores (opcional) diz o tipo de paginador que será criado
+	  * você pode fazer uso ou não do paginador
+	  *
+	  * @ var array
+	  */	  
+	 protected $_pager = array("yahoo","google","jumping","simple");
+	 
+	 /*
+	  * Commentary in Brazilian Portuguese
+	  * -----------------------------------------
+	  * retorna os índices com as páginas geradas pelo total de registros, ou tamanho do array
+	  * é um valor de retorno (array) e também é opcional você pode trabalhar sem ele
+	  *
+	  * @ var array
+	  */	  
+	 protected $_indexes = array();
+	 
+	 /*
+	  * Commentary in Brazilian Portuguese
+	  * -----------------------------------------
+	  * define o total de índices das páginas que serão mostrados, valor padrão de 1 à 10.
+	  *
+	  * @ var int
+	  */
+	 protected $_perPage = 10;
+	 
+	 /*
+	  * Commentary in Brazilian Portuguese
+	  * -----------------------------------------
+	  * define as configurações extras para paginações do tipo Delicious ou Google que usam respactivamente 
+	  * esse parâmetro como índices extras, e total de índices inicial
+	  *
+	  * @ var int
+	  */
+	 protected $_extraSettings = 4;
+	 
+	 /*
+	  * Commentary in Brazilian Portuguese
+	  * -----------------------------------------
+	  * retorna o total de páginas
+	  *
+	  * @ var int
+	  */
+	 protected $_totalPages = null;
+	 
+	 /*
+	  * Commentary in Brazilian Portuguese
+	  * -----------------------------------------
+	  * retorna a próxima página
+	  *
+	  * @ var int
+	  */
+	 protected $_nextPage = 1;
+	 
+	 /*
+	  * Commentary in Brazilian Portuguese
+	  * -----------------------------------------
+	  * retorna a página anterior
+	  *
+	  * @ var int
+	  */
+	 protected $_previousPage = 1;
+	 
+	 /*
+	  * Commentary in Brazilian Portuguese
+	  * -----------------------------------------
+	  * retorna um array com todos os índices das páginas existentes
+	  *
+	  * @ var array
+	  */
+	 protected $_arrayPages = array();
+	 
+	 
+	 /*
+	  * Commentary in Brazilian Portuguese
+	  * Construtor da classe, nele você informa a página atual e o total de registros por página
+	  * Ele retorna para você as informações de início em cláusulas sql
+	  *
+	  * Commentary in English
+	  * Class constructor, it tells you the current page and total number of records per page
+	  * It returns you to the information in clauses beginning sql
+	  *
+	  */	 
+	 public function __construct($page,$recordsPage)
+	 {
+		 
+		  /* 
+		   * Commentary in Brazilian Portuguese
+		   * se a página atual não for um valor numérico ou for igual a zero
+		   * então a página atual recebe o valor definido em $_page
+		   * 
+		   * Commentary in English
+		   * if the current page is not a numeric value or  is zero
+		   * then the current page receives the value determined in $_page
+		   *
+		   */		  
+		   if(!is_numeric($page) || $page <= 0)
+		   $this->_page = $this->_page;
+		   else
+		   $this->_page = $page;
+		 
+		  /*
+		   * Commentary in Brazilian Portuguese
+		   * se o valor de resultados por página não for numérico
+		   * então o valor de resultados por página recebe o valor definido em $_recordsPage
+		   *
+		   * Commentary in English
+		   * if the value of results per page is not a numeric
+		   * then the value of results per page receives the value determined in $_recordsPage
+		   *
+		   */
+		   if(!is_numeric($recordsPage))
+		   $this->_recordsPage = $this->_recordsPage;
+		   else
+		   $this->_recordsPage = $recordsPage;
+		 
+          /*
+		   * Commentary in Brazilian Portuguese
+		   * criando o valor de início para cláusulas sql
+		   * esse valor é apenas um valor de retorno, você não é obrigado a trabalhar com ele
+		   * a função desse valor é garantir que a sua cláusula limit tenha um valor de início igual
+		   * ao valor calculado pela paginação
+		   *
+		   * Commentary in English
+		   * creating the start value for sql clauses
+		   * this value is only a return value, you are not obligated to work with this
+		   * the function of this value is to ensure that its limit clause has a start value equal
+		   * the value calculated by the paging
+		   *
+		   */
+		   $this->_start =  ($this->_page - 1) * $this->_recordsPage;
+	 }
+	 
+	 
+	/*
+	 * Commentary in Brazilian Portuguese
+	 * Usando o método mágico __get para retornar os valores das propriedades e métodos dessa classe
+	 *
+	 * Commentary in English
+	 * Using __get magic method to return the values of the properties and methods of this class
+	 *
+	 */
+	 public function __get($property)
+	 {
+	     return $this->$property;
+	 }
+	 
+	 /*
+          * Commentary in Brazilian Portuguese
+          * Retornando a próxima página, página anterior, total de páginas, primeira página, e índices de páginas
+          *
+          * Commentary in English
+          * Returning the next page, previous page, total of pages, fisrt page, and index of pages
+          */
+	 public function CreatePages($totalRecords, $pager = null, $marcadores = 10, $extraSettings = null)
+	 {
+         
+		 /*
+		  * Commentary in Brazilian Portuguese
+		  * Se o total de registros ou dimensão do array não for um número ou for menor ou igual a zero
+		  * o método retorna falso
+		  *
+		  * Commentary in English
+		  * If the total records or size of the array is not a number or is less than or equal to zero
+		  * the method return false
+		  *
+		  */
+		 if(!is_numeric($totalRecords) || $totalRecords <= 0)
+		 {
+			 return false;
+		 }
+		 
+		 else
+		 {
+			/* 
+			 * Commentary in Brazilian Portuguese
+			 * Total de páginas é igual ao total de registros dividido pelo total de registros por página com o valor arredondado para cima
+			 *
+			 * Commentary in English 
+			 * Total number of pages is equal to the total of records divided by the total number of records per page
+			 *
+			 */
+		        $this->_totalPages = ceil($totalRecords/$this->_recordsPage);
+			
+			/*
+			 * Commentary in Brazilian Portuguese
+			 * definindo a primeira página sempre no valor 1
+			 * 
+			 * Commentary in English 
+			 * setting the first page always worth 1
+			 */
+			$this->_firstPage = 1;
+			
+			/*
+			 * Commentary in Brazilian Portuguese
+			 * Calculando a próxima página
+			 *
+			 * Commentary in English 
+			 * Calculating the next page
+			 */
+			       $nextPage = $this->_page + 1;
+				   
+				   if($nextPage >= $this->_totalPages)
+				   $nextPage = $this->_totalPages;
+				   
+			$this->_nextPage = $nextPage;
+			
+			/*
+			 * Commentary in Brazilian Portuguese
+			 * Calculando a página anterior
+			 *
+			 * Commentary in English 
+			 * Calculating the previous page
+			 */			       
+				   $previousPage = $this->_page - 1;
+				   if($previousPage <= 1)
+				   $previousPage = 1;
+				
+			$this->_previousPage = $previousPage;
+			
+			/*
+			 * Commentary in Brazilian Portuguese
+			 * Retornando um array com todas as páginas
+			 *
+			 * Commentary in English
+			 * Returning an array with all pages
+			 */
+			$this->_arrayPages = range(1,$this->_totalPages);
+
+
+                        if($pager != null && in_array($pager, $this->_pager))
+                        {
+
+                            /*
+                             * Commentary in Brazilian Portuguese
+                             * Verificando se o total de índices por página foi informado
+                             *
+                             * Commentary in English
+                             * Checking if the total of index by page was informed
+                             */
+                             if(!is_numeric($this->_perPage))
+                             $this->_perPage = $this->_perPage;
+
+                            /*
+                             * Commentary in Brazilian Portuguese
+                             * Verificando se as informações extras foram informadas
+                             *
+                             * Commentary in English
+                             * Verifying that the extra information were informed
+                             */
+                             if(!is_numeric($extraSettings))
+                             $extraSettings = $this->_extraSettings;
+
+                            /*
+                             * Commentary in Brazilian Portuguese
+                             * Chamando a classe de acordo com o tipo informado
+                             *
+                             * Commentary in English
+                             * Calling the class according to the type reported
+                             */
+                             switch($pager)
+                             {
+                                case "yahoo":
+                                   require_once 'Types/Yahoo.php';
+                                   $indexes = new Yahoo;
+                                   $indexes = $indexes->ReturnIndexes($this->_page, $this->_totalPages, $marcadores, $extraSettings, $this->_arrayPages);
+
+                                   $this->_indexes = $indexes['index'];
+                                   $this->_initialIndex = $indexes['initialIndex'];
+                                   $this->_finalIndex = $indexes['finalIndex'];
+                                   break;
+                               
+                                case "google":
+                                   require_once 'Types/Google.php';
+                                   $indexes = new Google;
+                                   $indexes = $indexes->ReturnIndexes($this->_page, $this->_totalPages, $marcadores, $extraSettings, $this->_arrayPages);
+
+                                   $this->_indexes = $indexes['index'];
+                                   break;
+
+                                case "jumping":
+                                   require_once 'Types/Jumping.php';
+                                   $indexes = new Jumping;
+                                   $indexes = $indexes->ReturnIndexes($this->_page, $this->_totalPages, $marcadores, $this->_arrayPages);
+
+                                   $this->_indexes = $indexes['index'];
+                                   break;
+                               
+                                case "simple":
+                                   require_once 'Types/Simple.php';
+                                   $indexes = new Simple;
+                                   $indexes = $indexes->ReturnIndexes($this->_page, $this->_totalPages, $marcadores, $this->_arrayPages);
+
+                                   $this->_indexes = $indexes['index'];
+                                   break;
+                            }
+
+                           
+                        }
+			
+			
+		 }
+
+
+
+	 }
+
+        
+        /*
+         * Commentary in Brazilian Portuguese
+         * Retornando a página atual + o número de páginas passadas no parâmetro do método
+         *
+         * Commentary in English
+         * Returning the current page + the number of pages reported in the method
          */
-        protected $_variables = array(
-            'classes' => array('clearfix', 'pagination'),
-            'crumbs' => 3,
-            'rpp' => 5,
-            'key' => 'start',
-            'target' => '',
-            'next' => 'Next &raquo;',
-            'previous' => '&laquo; Previous',
-            'clean' => true
-        );
+         public function Go($parameter)
+         {
+             $go = (int) $this->_page + $parameter;
+             if($go >= $this->_totalPages)
+             $go = $this->_totalPages;
 
-        /**
-         * __construct
-         * 
-         * @access public
-         * @param  integer $current (default: null)
-         * @param  integer $total (default: null)
-         * @return void
-         */
-        public function __construct($current = null, $total = null)
-        {
-            // current instantiation setting
-            if (!is_null($current)) {
-                $this->setCurrent($current);
-            }
+             return $go;
+         }
 
-            // total instantiation setting
-            if (!is_null($total)) {
-                $this->setTotal($total);
-            }
+         /*
+          * Commentary in Brazilian Portuguese
+          * Retornando a página atual - o número de páginas passadas no parâmetro do método
+          *
+          * Commentary in English
+          * Returning the current page - the number of pages reported in the method
+          */
+         public function Back($parameter)
+         {
+             $back = (int) $this->_page - $parameter;
+             if($back <= 1)
+             $back = 1;
 
-            // Pass along get (for link generation)
-            $this->_variables['get'] = $_GET;
-        }
+             return $back;
+         }
 
-        /**
-         * _check
-         * 
-         * Checks the current (page) and total (records) parameters to ensure
-         * they've been set. Throws an exception otherwise.
-         * 
-         * @access protected
-         * @return void
-         */
-        protected function _check()
-        {
-            if (!isset($this->_variables['current'])) {
-                throw new Exception('Pagination::current must be set.');
-            } elseif (!isset($this->_variables['total'])) {
-                throw new Exception('Pagination::total must be set.');
-            }
-        }
+}
 
-        /**
-         * addClasses
-         * 
-         * Sets the classes to be added to the pagination div node.
-         * Useful with Twitter Bootstrap (eg. pagination-centered, etc.)
-         * 
-         * @see    <http://twitter.github.com/bootstrap/components.html#pagination>
-         * @access public
-         * @param  mixed $classes
-         * @return void
-         */
-        public function addClasses($classes)
-        {
-            $this->_variables['classes'] = array_merge(
-                $this->_variables['classes'],
-                (array) $classes
-            );
-        }
-
-        /**
-         * getCanonicalUrl
-         * 
-         * @access public
-         * @return string
-         */
-        public function getCanonicalUrl()
-        {
-            $target = $this->_variables['target'];
-            if (empty($target)) {
-                $target = $_SERVER['PHP_SELF'];
-            }
-            $page = (int) $this->_variables['current'];
-            if ($page !== 1) {
-                return 'http://' . ($_SERVER['HTTP_HOST']) . ($target) . $this->getPageParam();
-            }
-            return 'http://' . ($_SERVER['HTTP_HOST']) . ($target);
-        }
-
-        /**
-         * getPageParam
-         * 
-         * @access public
-         * @param  boolean|integer $page (default: false)
-         * @return string
-         */
-        public function getPageParam($page = false)
-        {
-            if ($page === false) {
-                $page = (int) $this->_variables['current'];
-            }
-            $key = $this->_variables['key'];
-            return '?' . ($key) . '=' . ((int) $page);
-        }
-
-        /**
-         * getPageUrl
-         * 
-         * @access public
-         * @param  boolean|integer $page (default: false)
-         * @return string
-         */
-        public function getPageUrl($page = false)
-        {
-            $target = $this->_variables['target'];
-            if (empty($target)) {
-                $target = $_SERVER['PHP_SELF'];
-            }
-            return 'http://' . ($_SERVER['HTTP_HOST']) . ($target) . ($this->getPageParam($page));
-        }
-
-        /**
-         * getRelPrevNextLinkTags
-         * 
-         * @see    http://support.google.com/webmasters/bin/answer.py?hl=en&answer=1663744
-         * @see    http://googlewebmastercentral.blogspot.ca/2011/09/pagination-with-relnext-and-relprev.html
-         * @see    http://support.google.com/webmasters/bin/answer.py?hl=en&answer=139394
-         * @access public
-         * @return array
-         */
-        public function getRelPrevNextLinkTags()
-        {
-            // generate path
-            $target = $this->_variables['target'];
-            if (empty($target)) {
-                $target = $_SERVER['PHP_SELF'];
-            }
-            $key = $this->_variables['key'];
-            $params = $this->_variables['get'];
-            $params[$key] = 'pgnmbr';
-            $href = ($target) . '?' . http_build_query($params);
-            $href = preg_replace(
-                array('/=$/', '/=&/'),
-                array('', '&'),
-                $href
-            );
-            $href = 'http://' . ($_SERVER['HTTP_HOST']) . $href;
-
-            // Pages
-            $currentPage = (int) $this->_variables['current'];
-            $numberOfPages = (
-                (int) ceil(
-                    $this->_variables['total'] /
-                    $this->_variables['rpp']
-                )
-            );
-
-            // On first page
-            if ($currentPage === 1) {
-
-                // There is a page after this one
-                if ($numberOfPages > 1) {
-                    $href = str_replace('pgnmbr', 2, $href);
-                    return array(
-                        '<link rel="next" href="' . ($href) . '" />'
-                    );
-                }
-                return array();
-            }
-
-            // Store em
-            $prevNextTags = array(
-                '<link rel="prev" href="' . (str_replace('pgnmbr', $currentPage - 1, $href)) . '" />'
-            );
-
-            // There is a page after this one
-            if ($numberOfPages > $currentPage) {
-                array_push(
-                    $prevNextTags,
-                    '<link rel="next" href="' . (str_replace('pgnmbr', $currentPage + 1, $href)) . '" />'
-                );
-            }
-            return $prevNextTags;
-        }
-
-        /**
-         * parse
-         * 
-         * Parses the pagination markup based on the parameters set and the
-         * logic found in the render.inc.php file.
-         * 
-         * @access public
-         * @return void
-         */
-        public function create_links()
-        {
-            // ensure required parameters were set
-            $this->_check();
-
-            // bring variables forward
-            foreach ($this->_variables as $_name => $_value) {
-                $$_name = $_value;
-            }
-
-            // buffer handling
-            ob_start();
-            include 'pagination_template.php';
-            $_response = ob_get_contents();
-            ob_end_clean();
-            return $_response;
-        }
-
-        /**
-         * setClasses
-         * 
-         * @see    <http://twitter.github.com/bootstrap/components.html#pagination>
-         * @access public
-         * @param  mixed $classes
-         * @return void
-         */
-        public function setClasses($classes)
-        {
-            $this->_variables['classes'] = (array) $classes;
-        }
-
-        /**
-         * setClean
-         * 
-         * Sets the pagination to exclude page numbers, and only output
-         * previous/next markup. The counter-method of this is self::setFull.
-         * 
-         * @access public
-         * @return void
-         */
-        public function setClean()
-        {
-            $this->_variables['clean'] = true;
-        }
-
-        /**
-         * setCrumbs
-         * 
-         * Sets the maximum number of 'crumbs' (eg. numerical page items)
-         * available.
-         * 
-         * @access public
-         * @param  integer $crumbs
-         * @return void
-         */
-        public function setCrumbs($crumbs)
-        {
-            $this->_variables['crumbs'] = $crumbs;
-        }
-
-        /**
-         * setCurrent
-         * 
-         * Sets the current page being viewed.
-         * 
-         * @access public
-         * @param  integer $current
-         * @return void
-         */
-        public function setCurrent($current)
-        {
-            $this->_variables['current'] = $current;
-        }
-
-        /**
-         * setFull
-         * 
-         * See self::setClean for documentation.
-         * 
-         * @access public
-         * @return void
-         */
-        public function setFull()
-        {
-            $this->_variables['clean'] = false;
-        }
-
-        /**
-         * setKey
-         * 
-         * Sets the key of the <_GET> array that contains, and ought to contain,
-         * paging information (eg. which page is being viewed).
-         * 
-         * @access public
-         * @param  string $key
-         * @return void
-         */
-        public function setKey($key)
-        {
-            $this->_variables['key'] = $key;
-        }
-
-        /**
-         * setNext
-         * 
-         * Sets the copy of the next anchor.
-         * 
-         * @access public
-         * @param  string $str
-         * @return void
-         */
-        public function setNext($str)
-        {
-            $this->_variables['next'] = $str;
-        }
-
-        /**
-         * setPrevious
-         * 
-         * Sets the copy of the previous anchor.
-         * 
-         * @access public
-         * @param  string $str
-         * @return void
-         */
-        public function setPrevious($str)
-        {
-            $this->_variables['previous'] = $str;
-        }
-
-        /**
-         * setRPP
-         * 
-         * Sets the number of records per page (used for determining total
-         * number of pages).
-         * 
-         * @access public
-         * @param  integer $rpp
-         * @return void
-         */
-        public function setRPP($rpp)
-        {
-            $this->_variables['rpp'] = $rpp;
-        }
-
-        /**
-         * setTarget
-         * 
-         * Sets the leading path for anchors.
-         * 
-         * @access public
-         * @param  string $target
-         * @return void
-         */
-        public function setTarget($target)
-        {
-            $this->_variables['target'] = $target;
-        }
-
-        /**
-         * setTotal
-         * 
-         * Sets the total number of records available for pagination.
-         * 
-         * @access public
-         * @param  integer $total
-         * @return void
-         */
-        public function setTotal($total)
-        {
-            $this->_variables['total'] = $total;
-        }
-    }
+?>
