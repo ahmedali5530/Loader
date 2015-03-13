@@ -179,6 +179,7 @@ Class DB extends Loader{
 				$this->where[] = " `" . $this->clean($this->check_alias($field)) ."` IN('".$values."')";
 			}
 		}
+		return $this;
 	}
 	
 	//made the support for BETWEEN comparisons
