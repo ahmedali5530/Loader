@@ -31,13 +31,14 @@ Class DB extends Loader{
 	var $get_object = array();
 	var $query = '';
 	var $raw = false;
+	var $db_prefix = '';
 	
 	/**
 	* Regular methods starts here-------------------------------------------------------------------------
 	**/
 	
 	//constructor
-	public function __construct($host=null,$user=null,$pw=null,$db=null)
+	public function __construct($host=null,$user=null,$pw=null,$db=null,$db_prefix=null)
 	{
 		if($host==null && $user==null && $pw==null && $db==null){
 			$this->con = new Mysqli(self::DB_HOST,self::DB_USER,self::DB_PASSWORD,self::DB_NAME);
@@ -48,6 +49,13 @@ Class DB extends Loader{
 			die("Failed to connect to Server: (" . $this->con->connect_errno . ") " . $this->con->connect_error);
 		}
 		$this->con->set_charset('utf8');
+		
+		//set db_prefix
+		if($db_prefix == null){
+			$this->db_prefix = parent::DB_PREFIX;
+		}else{
+			$this->db_prefix = $db_prefix;
+		}
 		
 		self::$instance = $this;
 	}
@@ -151,8 +159,8 @@ Class DB extends Loader{
 		return $this;
 	}
 	
-	//adds the where IN operator
-	public function where_in($field, $values)
+	//adds the where IN operator, added support for WHERE `field` NOT IN(1,2,3,4,...)
+	public function where_in($field, $values,$mode = '')
 	{
 		if(is_array($values))
 		{
@@ -161,11 +169,11 @@ Class DB extends Loader{
 			
 			if(isset($this->where) && count($this->where)>0)
 			{
-				$this->where[] = " AND `" . $this->clean($this->check_alias($field)) ."` IN('".$values."')";
+				$this->where[] = " AND `" . $this->clean($this->check_alias($field)) ."` ".$mode." IN('".$values."')";
 			}
 			else
 			{
-				$this->where[] = " `" . $this->clean($this->check_alias($field)) ."` IN('".$values."')";
+				$this->where[] = " `" . $this->clean($this->check_alias($field)) ."` ".$mode." IN('".$values."')";
 			}
 		}
 		else
@@ -256,11 +264,11 @@ Class DB extends Loader{
 	{
 		if(isset($this->table) && count($this->table)>0)
 		{
-			$this->table[] = ", `".$this->clean($this->check_alias(parent::DB_PREFIX.$table_name))."`";
+			$this->table[] = ", `".$this->clean($this->check_alias($this->db_prefix.$table_name))."`";
 		}
 		else
 		{
-			$this->table[] = "`".$this->clean($this->check_alias(parent::DB_PREFIX.$table_name))."`";
+			$this->table[] = "`".$this->clean($this->check_alias($this->db_prefix.$table_name))."`";
 		}
 		return $this;
 	}
@@ -270,11 +278,11 @@ Class DB extends Loader{
 	{
 		if(isset($this->table) && count($this->table)>0)
 		{
-			$this->table[] = ", `".$this->clean($this->check_alias(parent::DB_PREFIX.$table_name))."`";
+			$this->table[] = ", `".$this->clean($this->check_alias($this->db_prefix.$table_name))."`";
 		}
 		else
 		{
-			$this->table[] = "`".$this->clean($this->check_alias(parent::DB_PREFIX.$table_name))."`";
+			$this->table[] = "`".$this->clean($this->check_alias($this->db_prefix.$table_name))."`";
 		}
 		return $this;
 	}
@@ -288,11 +296,23 @@ Class DB extends Loader{
 	}
 	
 	//sets the order by clause
+	//added support for getting random values from database, dedicated to Fatima Zaheer, because this was added on her request. use only rand in field
+	//Thanks to Fatima Zaheer Khan.
+	//changing from escape to original
 	public function order_by($order_by_field,$order_by_mode='ASC')
 	{
-		$this->order_by = $this->check_alias($order_by_field);
-		$this->order_by_mode = $order_by_mode;
-		return $this;
+		if($order_by_field == 'RAND' || $order_by_field == 'rand')
+		{
+			$this->order_by = " ORDER BY RAND() " . $order_by_mode;
+			return $this;
+		}
+			else
+		{
+			$this->order_by = " ORDER BY `".$this->check_alias($order_by_field) . "` ". $order_by_mode;
+			return $this;
+		}
+		
+		
 	}
 	
 	//sets the group by class
@@ -309,7 +329,7 @@ Class DB extends Loader{
 	//join('t1 as ab','ab.school_id=t2.school_id','JOIN TYPE')
 	public function join($table_name,$condition,$join_type='INNER')
 	{
-		$this->joins[] = $join_type.' JOIN `'.$this->check_alias(parent::DB_PREFIX.$table_name).'` ON `'.parent::DB_PREFIX.str_replace('=','`=`'.parent::DB_PREFIX.'',str_replace('.','`.`',$condition)).'` ';
+		$this->joins[] = $join_type.' JOIN `'.$this->check_alias($this->db_prefix.$table_name).'` ON `'.$this->db_prefix.str_replace('=','`=`'.$this->db_prefix.'',str_replace('.','`.`',$condition)).'` ';
 		return $this;
 	}
 	
@@ -428,7 +448,7 @@ Class DB extends Loader{
 			//check for order_by
 			if($this->order_by !==false)
 			{
-				$this->query .= "ORDER BY `" .$this->order_by . "` " . $this->order_by_mode;
+				$this->query .= $this->order_by;
 			}
 			
 			//check for limits
@@ -1047,7 +1067,7 @@ Class DB extends Loader{
 	{
 		if(strpos($key,'.'))
 		{
-			$key = str_replace('.','`.`',parent::DB_PREFIX.$key);
+			$key = str_replace('.','`.`',$this->db_prefix.$key);
 		}
 		
 		if(strpos($key,'as'))
