@@ -20,14 +20,12 @@ Class Uploader extends Loader{
 		'6'  => 'jpeg' ,
 		'7'  => 'jpg' ,
 		'8'  => 'png' ,
-		'9'  => 'bmp' ,
-		'10'  => 'image/bmp' ,
 	);
 	
 	//holds the type specified by user
 	public $type;
 	
-	//random name for uploaded file
+	//checks if user selected random name option
 	public $rand = false;
 	
 	//holds the size of uploading size
@@ -50,7 +48,7 @@ Class Uploader extends Loader{
 	}
 
 	//uploads the file
-	public function upload($file,$options=null)
+	public function upload($file=null,$options=null)
 	{
 		//validations.
 		//validations..
@@ -79,7 +77,7 @@ Class Uploader extends Loader{
 					$this->path = $options['path'];	
 				}
 				
-				if(is_array($options) && isset($options['random_name']) && $options['random_name'] == true)
+				if(is_array($options) && isset($options['random_name']))
 				{	
 					$this->rand = true;
 				}
@@ -193,7 +191,7 @@ Class Uploader extends Loader{
 	}
 	
 	//generates a random name for uploaded file
-	public function random_name($file)
+	private function random_name($file)
 	{
 		return md5($file.'_'.substr(uniqid(),-4)).'_'.substr(uniqid(),-4).'.'.strtolower(pathinfo($file, PATHINFO_EXTENSION));
 	}
